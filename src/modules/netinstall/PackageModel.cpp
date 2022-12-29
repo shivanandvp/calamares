@@ -2,32 +2,20 @@
  *
  *   SPDX-FileCopyrightText: 2017 Kyle Robbertze <kyle@aims.ac.za>
  *   SPDX-FileCopyrightText: 2017-2018 2020, Adriaan de Groot <groot@kde.org>
+ *   SPDX-FileCopyrightText: 2022, shivanandvp <shivanandvp@rebornos.org>
  *   SPDX-License-Identifier: GPL-3.0-or-later
  *
  *   Calamares is Free Software: see the License-Identifier above.
  *
  */
 
+#include <QObject>
+
 #include "PackageModel.h"
 
 #include "utils/Logger.h"
 #include "utils/Variant.h"
 #include "utils/Yaml.h"
-
-/// Recursive helper for setSelections()
-static void
-setSelections( const QStringList& selectNames, PackageTreeItem* item )
-{
-    for ( int i = 0; i < item->childCount(); i++ )
-    {
-        auto* child = item->child( i );
-        setSelections( selectNames, child );
-    }
-    if ( item->isGroup() && selectNames.contains( item->name() ) )
-    {
-        item->setSelected( Qt::CheckState::Checked );
-    }
-}
 
 /** @brief Collects all the "source" values from @p groupList
  *
@@ -171,6 +159,18 @@ PackageModel::setData( const QModelIndex& index, const QVariant& value, int role
         PackageTreeItem* item = static_cast< PackageTreeItem* >( index.internalPointer() );
         item->setSelected( static_cast< Qt::CheckState >( value.toInt() ) );
 
+        if ( this->isSharedState() && !item->isIgnoringShareState() )
+        {
+            Qt::CheckState state = item->isSelected();
+            if( !item->isGroup() )
+            {
+                QString packageName = item->packageName();                
+                this->applyStateToCopies( packageName, state );
+            } else {
+                applyStateToGroupAndCopies( state, *item );
+            }
+        }
+
         emit dataChanged( this->index( 0, 0 ),
                           index.sibling( index.column(), index.row() + 1 ),
                           QVector< int >( Qt::CheckStateRole ) );
@@ -191,7 +191,11 @@ PackageModel::flags( const QModelIndex& index ) const
         if ( item->isImmutable() || item->isNoncheckable() )
         {
             return QAbstractItemModel::flags( index );  //Qt::NoItemFlags;
-        }
+        } 
+        // else if ( item->isNoncheckable() )
+        // {
+        //     return static_cast<Qt::ItemFlags>(~ Qt::ItemIsEnabled & QAbstractItemModel::flags( index ));
+        // }
         return Qt::ItemIsUserCheckable | QAbstractItemModel::flags( index );
     }
     return QAbstractItemModel::flags( index );
@@ -208,11 +212,215 @@ PackageModel::headerData( int section, Qt::Orientation orientation, int role ) c
 }
 
 void
-PackageModel::setSelections( const QStringList& selectNames )
+PackageModel::setGroupSelections( const QStringList& selectNames, PackageTreeItem* item )
+{
+    for ( int i = 0; i < item->childCount(); i++ )
+    {
+        auto* child = item->child( i );
+        setGroupSelections( selectNames, child );
+    }
+    if ( item->isGroup() && selectNames.contains( item->name() ) )
+    {
+        item->setSelected( Qt::CheckState::Checked );
+        if ( this->isSharedState() && !item->isIgnoringShareState() ) 
+        {
+            Qt::CheckState state = Qt::CheckState::Checked;
+            this -> applyStateToGroupAndCopies( state, *item );
+        }
+    }
+}
+
+void
+PackageModel::setGroupSelections( const QStringList& selectNames )
 {
     if ( m_rootItem )
     {
-        ::setSelections( selectNames, m_rootItem );
+        this->setGroupSelections( selectNames, m_rootItem );
+    }
+}
+
+static void
+fetchDeduplicatedPackageStates( QHash<QString, Qt::CheckState>& stateHashMap, PackageTreeItem& item )
+{
+    if ( !item.isGroup() )
+    {
+        QString packageName = item.packageName();
+        Qt::CheckState packageState = item.isSelected();
+        if ( 
+            !packageName.isEmpty() 
+            && (
+                !stateHashMap.contains( packageName )
+                || packageState == Qt::CheckState::Checked 
+            ) 
+        ){
+            stateHashMap.insert( packageName, packageState );
+        }
+    }
+    else
+    {
+        for ( int i = 0; i < item.childCount(); i++ )
+        {
+            auto* child = item.child( i );
+            fetchDeduplicatedPackageStates( stateHashMap, *child );
+        }
+    }
+}
+
+void
+PackageModel::fetchDeduplicatedPackageStates( QHash<QString, Qt::CheckState>& stateHashMap )
+{
+    if ( m_rootItem )
+    {
+        ::fetchDeduplicatedPackageStates( stateHashMap, *m_rootItem );
+    }
+}
+
+static void
+fetchPackageStates( QList<QPair<PackageTreeItem*,Qt::CheckState>>& stateMap, PackageTreeItem* item )
+{
+    if ( !item->isGroup() )
+    {
+        QString packageName = item->packageName();
+        Qt::CheckState packageState = item->isSelected();
+        if ( !packageName.isEmpty() )
+        {
+            stateMap.append( QPair( item, packageState ) );
+        }
+    }
+    else
+    {
+        for ( int i = 0; i < item->childCount(); i++ )
+        {
+            auto* child = item->child( i );
+            fetchPackageStates( stateMap, child );
+        }
+    }
+}
+
+void
+PackageModel::fetchPackageStates( QList<QPair<PackageTreeItem*,Qt::CheckState>>& stateMap )
+{
+    if ( m_rootItem )
+    {
+        ::fetchPackageStates( stateMap, m_rootItem );
+    }
+}
+
+void
+PackageModel::applyStateToCopies( QHash<QString, Qt::CheckState>& stateHashMap, PackageTreeItem& item )
+{
+    if ( !this->isSharedState() || item.isIgnoringShareState() ) {
+        return;
+    }
+
+    if ( item.isGroup() )
+    {
+        for ( int i = 0; i < item.childCount(); i++ )
+        {
+            auto* child = item.child( i );
+            applyStateToCopies( stateHashMap, *child );
+        }
+    }
+    else 
+    {
+        QString packageName = item.packageName();
+        Qt::CheckState packageState = item.isSelected();
+        if ( 
+            !packageName.isEmpty()
+            && !item.isImmutable() 
+            && stateHashMap.contains( packageName )             
+            && packageState != stateHashMap.value( packageName ) 
+        )
+        {
+            item.setSelected( stateHashMap.value( packageName ) );
+        }
+    }
+}
+
+void
+PackageModel::applyStateToCopies( QHash<QString, Qt::CheckState>& stateHashMap )
+{
+    if ( m_rootItem )
+    {
+        this->applyStateToCopies( stateHashMap, *m_rootItem );
+    }
+}
+
+void
+PackageModel::applyStateToCopies( QString& selectName, Qt::CheckState& selectState, PackageTreeItem& item )
+{
+    QHash<QString, Qt::CheckState> stateHashMap = QHash<QString, Qt::CheckState>();    
+    stateHashMap.insert( selectName, selectState );
+    this->applyStateToCopies( stateHashMap, item );
+}
+
+void
+PackageModel::applyStateToCopies( QString& selectName, Qt::CheckState& selectState )
+{
+    if ( m_rootItem )
+    {
+        this->applyStateToCopies( selectName, selectState, *m_rootItem );
+    }
+}
+
+void 
+PackageModel::applyInitialStateToCopies()
+{
+    QHash<QString,Qt::CheckState> stateHashMap = QHash<QString,Qt::CheckState>();
+    this->fetchDeduplicatedPackageStates( stateHashMap );
+    this->applyStateToCopies( stateHashMap );
+}
+
+void
+PackageModel::applyStateToGroupAndCopies( Qt::CheckState& selectState, PackageTreeItem& item )
+{
+
+    if ( !this->isSharedState() || item.isIgnoringShareState() ) {
+        return;
+    }
+
+    if ( selectState != Qt::PartiallyChecked && item.isGroup() )
+    {
+        for ( int i = 0; i < item.childCount(); i++ )
+        {
+            auto* child = item.child( i );
+            if ( !child->isGroup() )
+            {
+                QString packageName = child->packageName();
+                this->applyStateToCopies( packageName, selectState );
+            }
+            else
+            {
+                applyStateToGroupAndCopies(selectState, *child);
+            }
+        }
+    }
+}
+
+void
+PackageModel::storeInitialState()
+{  
+    if ( this->isSharedState() ) {
+        m_InitialStateHashMap = new QHash<QString,Qt::CheckState>();        
+        this->fetchDeduplicatedPackageStates( *m_InitialStateHashMap );
+    } else {
+        m_InitialStateMap = new QList<QPair<PackageTreeItem*,Qt::CheckState>>();    
+        this->fetchPackageStates( *m_InitialStateMap );    
+    }
+}
+
+void
+PackageModel::resetToDefaults()
+{
+    if ( this->isSharedState() ) {
+        this->applyStateToCopies( *m_InitialStateHashMap );
+    } else {
+        QListIterator<QPair<PackageTreeItem*, Qt::CheckState>> i(*m_InitialStateMap);
+        while( i.hasNext() )
+        {
+            QPair<PackageTreeItem*, Qt::CheckState> p = i.next();
+            p.first->setSelected(p.second);
+        }
     }
 }
 
@@ -352,8 +560,9 @@ PackageModel::setupModelData( const QVariantList& l )
     beginResetModel();
     delete m_rootItem;
     m_rootItem = new PackageTreeItem();
-    setupModelData( l, m_rootItem );
+    setupModelData( l, m_rootItem );    
     endResetModel();
+    this->storeInitialState();
 }
 
 void
@@ -374,7 +583,12 @@ PackageModel::appendModelData( const QVariantList& groupList )
                 PackageTreeItem* child = m_rootItem->child( i );
                 if ( sources.contains( child->source() ) )
                 {
-                    removeList.insert( 0, i );
+                    if ( this->isSharedState() && !child->isIgnoringShareState() )
+                    {
+                        Qt::CheckState state = Qt::CheckState::Unchecked;
+                        this->applyStateToGroupAndCopies( state, *child );
+                    }
+                    removeList.insert( 0, i );                    
                 }
             }
             for ( const int& item : qAsConst( removeList ) )

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2020 Adriaan de Groot <groot@kde.org>
 # SPDX-FileContributor: benne-dee ( worked on groups schema )
+# SPDX-FileContributor: 2022 shivanandvp <shivanandvp@rebornos.org> 
 # SPDX-License-Identifier: GPL-3.0-or-later
 ---
 $schema: https://json-schema.org/draft-07/schema#
@@ -33,8 +34,9 @@ definitions:
             selected: { type: boolean }
             critical: { type: boolean, default: false }
             immutable: { type: boolean }
-            noncheckable: { type: boolean }
+            noncheckable: { type: boolean }            
             expanded: { type: boolean }
+            ignore-share-state: { type: boolean, default: false }
             subgroups:
                 type: array
                 items: { $ref: 'definitions/group' }
@@ -76,6 +78,7 @@ oneOf:
                 sidebar: { type: string }
                 title: { type: string }
         groups: { $ref: 'definitions/groups' }
+        share-state: { type: boolean, default: false }
     required: [ groupsUrl ]
 
 -   # Groups file with top level *groups* key

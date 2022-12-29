@@ -2,6 +2,7 @@
  *
  *   SPDX-FileCopyrightText: 2017 Kyle Robbertze <kyle@aims.ac.za>
  *   SPDX-FileCopyrightText: 2017 2020, Adriaan de Groot <groot@kde.org>
+ *   SPDX-FileCopyrightText: 2022, shivanandvp <shivanandvp@rebornos.org>  
  *   SPDX-License-Identifier: GPL-3.0-or-later
  *
  *   Calamares is Free Software: see the License-Identifier above.
@@ -50,6 +51,7 @@ PackageTreeItem::PackageTreeItem( const QString& packageName, PackageTreeItem* p
     , m_isCritical( parent ? parent->isCritical() : false )
     , m_showReadOnly( parent ? parent->isImmutable() : false )
     , m_showNoncheckable( false )
+    , m_ignoreShareState( parent ? parent->isIgnoringShareState() : false )
 {
 }
 
@@ -62,6 +64,7 @@ PackageTreeItem::PackageTreeItem( const QVariantMap& groupData, PackageTag&& par
     , m_isCritical( parent.parent ? parent.parent->isCritical() : false )
     , m_showReadOnly( parent.parent ? parent.parent->isImmutable() : false )
     , m_showNoncheckable( false )
+    , m_ignoreShareState( parent.parent ? parent.parent->isIgnoringShareState() : false )
 {
 }
 
@@ -79,7 +82,8 @@ PackageTreeItem::PackageTreeItem( const QVariantMap& groupData, GroupTag&& paren
     , m_showReadOnly( CalamaresUtils::getBool( groupData, "immutable", false ) )
     , m_showNoncheckable( CalamaresUtils::getBool( groupData, "noncheckable", false ) )
     , m_startExpanded( CalamaresUtils::getBool( groupData, "expanded", false ) )
-{
+    , m_ignoreShareState( CalamaresUtils::getBool( groupData, "ignore-share-state", false ) )
+{ 
 }
 
 PackageTreeItem::PackageTreeItem::PackageTreeItem()
@@ -87,7 +91,7 @@ PackageTreeItem::PackageTreeItem::PackageTreeItem()
     , m_name( QStringLiteral( "<root>" ) )
     , m_selected( Qt::Checked )
     , m_isGroup( true )
-{
+{  
 }
 
 PackageTreeItem::~PackageTreeItem()

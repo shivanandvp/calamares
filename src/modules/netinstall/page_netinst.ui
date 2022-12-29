@@ -2,6 +2,7 @@
 <ui version="4.0">
  <author>
 SPDX-FileCopyrightText: 2016 shainer &lt;syn.shainer@gmail.com&gt;
+SPDX-FileCopyrightText: 2022 shivanandvp &lt;shivanandvp@rebornos.org&gt;
 SPDX-License-Identifier: GPL-3.0-or-later
  </author>
  <class>Page_NetInst</class>
@@ -55,11 +56,34 @@ SPDX-License-Identifier: GPL-3.0-or-later
     </widget>
    </item>
    <item>
-    <widget class="QLabel" name="netinst_status">
-     <property name="text">
-      <string/>
+    <layout class="QHBoxLayout" name="bottomArea">
+     <property name="sizeConstraint">
+      <enum>QLayout::SetDefaultConstraint</enum>
      </property>
-    </widget>
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <item alignment="Qt::AlignLeft">
+      <widget class="QPushButton" name="reset_button">
+       <property name="text">
+        <string>     Reset to Defaults     </string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="netinst_status">
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>
